@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSH Matrix</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #00ff00;
+      --secondary: #00aa00;
+      --bg-dark: #000;
+      --text-color: #00ff00;
+      --border: #00ff00;
+      --terminal-height: 200px;
+    }
+
+    body.light-mode {
+      --bg-dark: #f5f5f5;
+      --text-color: #000;
+      --border: #333;
+      --primary: #007bff;
+      --secondary: #0056b3;
+    }
+
+    body.dark-mode {
+      --bg-dark: #1a1a1a;
+      --text-color: #fff;
+      --border: #fff;
+      --primary: #fff;
+      --secondary: #ccc;
+    }
+
+    body {
+      font-family: 'Courier New', monospace;
+      background: var(--bg-dark);
+      color: var(--text-color);
+      min-height: 100vh;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #matrix-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      opacity: 0.15;
+    }
+
+    body.matrix-mode #matrix-canvas { opacity: 0.3; }
+    body.light-mode #matrix-canvas, body.dark-mode #matrix-canvas { display: none; }
+
+    #login-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      opacity: 0.3;
+      background: #000;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 20px;
+      padding-bottom: calc(var(--terminal-height) + 20px);
+      overflow-y: auto;
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; position: relative; z-index: 1; }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 20px;
+    }
+
+    .title { font-size: 28px; font-weight: bold; text-shadow: 0 0 10px var(--primary); }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      background: transparent;
+      border: 2px solid var(--border);
+      color: var(--text-color);
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      transition: all 0.2s;
+      border-radius: 4px 4px 0 0;
+    }
+
+    .tab:hover { background: rgba(0, 255, 0, 0.1); }
+    .tab.active { background: var(--primary); color: #000; }
+    body.light-mode .tab.active { color: #fff; }
+    body.dark-mode .tab.active { color: #000; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .section {
+      border: 2px solid var(--border);
+      padding: 20px;
+      margin-bottom: 20px;
+      background: rgba(0, 255, 0, 0.05);
+    }
+
+    body.light-mode .section { background: rgba(255, 255, 255, 0.9); }
+    body.dark-mode .section { background: rgba(255, 255, 255, 0.1); }
+
+    .section h2 { margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+
+    .server-item {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      margin-bottom: 10px;
+      border-left: 3px solid var(--primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    body.light-mode .server-item { background: rgba(255, 255, 255, 0.7); }
+    body.dark-mode .server-item { background: rgba(255, 255, 255, 0.1); }
+
+    .server-info { flex: 1; min-width: 200px; }
+    .server-name { font-weight: bold; margin-bottom: 5px; font-size: 16px; }
+    .server-host { font-size: 12px; opacity: 0.7; margin-bottom: 3px; }
+
+    .status { padding: 5px 10px; border-radius: 3px; font-weight: bold; }
+    .status.online { background: #00ff00; color: #000; }
+    .status.offline { background: #ff0000; color: #fff; }
+
+    button, select {
+      padding: 8px 15px;
+      background: var(--primary);
+      color: #000;
+      border: 2px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-right: 5px;
+      font-family: 'Courier New', monospace;
+      transition: all 0.2s;
+    }
+
+    body.light-mode button, body.light-mode select { color: #fff; }
+    body.dark-mode button, body.dark-mode select { color: #000; }
+    button:hover, select:hover { background: var(--secondary); box-shadow: 0 0 15px var(--primary); }
+
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    
+    input, textarea, select {
+      width: 100%;
+      padding: 8px;
+      background: rgba(0, 255, 0, 0.1);
+      border: 1px solid var(--border);
+      color: var(--text-color);
+      font-family: 'Courier New', monospace;
+      margin-bottom: 10px;
+    }
+
+    body.light-mode input, body.light-mode textarea, body.light-mode select { background: rgba(255, 255, 255, 0.9); }
+    body.dark-mode input, body.dark-mode textarea, body.dark-mode select { background: rgba(255, 255, 255, 0.1); }
+
+    .login-box {
+      border: 3px solid var(--border);
+      padding: 40px;
+      background: rgba(0, 0, 0, 0.9);
+      max-width: 400px;
+      margin: 100px auto;
+      text-align: center;
+      position: relative;
+      z-index: 100;
+    }
+
+    body.light-mode .login-box { background: rgba(255, 255, 255, 0.98); }
+    body.dark-mode .login-box { background: rgba(26, 26, 26, 0.98); }
+
+    .login-box h1 { margin-bottom: 30px; font-size: 24px; text-shadow: 0 0 20px var(--primary); }
+    .login-box input { display: block; width: 100%; margin-bottom: 15px; }
+    .login-box button { color: #000; background: var(--primary); }
+    body.light-mode .login-box button { color: #fff; }
+    
+    .login-box .btn-outline {
+      background: transparent;
+      color: var(--primary);
+      border: 2px solid var(--primary);
+    }
+    .login-box .btn-outline:hover {
+      background: rgba(0, 255, 0, 0.1);
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 5px; }
+
+    .terminal-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: var(--terminal-height);
+      background: #000;
+      border-top: 3px solid var(--primary);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+
+    body.light-mode .terminal-footer { background: #1a1a1a; }
+    body.dark-mode .terminal-footer { background: #0a0a0a; }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 15px;
+      background: rgba(0, 255, 0, 0.1);
+      border-bottom: 1px solid var(--primary);
+      flex-shrink: 0;
+    }
+
+    .terminal-title {
+      font-weight: bold;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .terminal-status {
+      display: flex;
+      gap: 15px;
+      font-size: 11px;
+    }
+
+    .terminal-status-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .status-dot.online { background: #00ff00; box-shadow: 0 0 5px #00ff00; }
+    .status-dot.offline { background: #ff0000; box-shadow: 0 0 5px #ff0000; }
+
+    .terminal-controls { display: flex; gap: 5px; }
+    .terminal-controls button { padding: 4px 10px; font-size: 10px; margin: 0; }
+
+    .terminal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 15px;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+      color: var(--primary);
+    }
+
+    .terminal-body::-webkit-scrollbar { width: 8px; }
+    .terminal-body::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); }
+    .terminal-body::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+
+    .terminal-line { margin-bottom: 2px; white-space: pre-wrap; word-wrap: break-word; }
+    .terminal-line.error { color: #ff6666; }
+    .terminal-line.success { color: #00ff00; }
+    .terminal-line.warning { color: #ffff00; }
+    .terminal-line.info { color: #00ffff; }
+
+    .resize-handle {
+      height: 6px;
+      background: linear-gradient(to bottom, var(--primary), transparent);
+      cursor: ns-resize;
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+
+    .resize-handle:hover { opacity: 1; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .stat-card {
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px solid var(--border);
+      padding: 25px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+
+    body.light-mode .stat-card { background: rgba(255, 255, 255, 0.8); }
+    body.dark-mode .stat-card { background: rgba(255, 255, 255, 0.1); }
+
+    .stat-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 5px 20px rgba(0, 255, 0, 0.3);
+    }
+
+    .stat-card.clickable { cursor: pointer; }
+    .stat-card.clickable:hover { border-color: var(--secondary); }
+
+    .stat-icon { font-size: 24px; margin-bottom: 15px; font-weight: bold; }
+    .stat-title { font-size: 14px; opacity: 0.7; margin-bottom: 10px; }
+    .stat-value { font-size: 36px; font-weight: bold; }
+    .stat-subtitle { font-size: 12px; margin-top: 10px; opacity: 0.6; }
+
+    .stat-details {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 15px;
+      font-size: 14px;
+    }
+
+    .stat-online { color: #00ff00; }
+    .stat-offline { color: #ff6666; }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+    }
+
+    .modal.active { display: flex; justify-content: center; align-items: center; }
+
+    .modal-content {
+      background: #000;
+      border: 3px solid var(--primary);
+      width: 95%;
+      max-width: 1400px;
+      height: 85vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    body.light-mode .modal-content { background: #f5f5f5; }
+    body.dark-mode .modal-content { background: #1a1a1a; }
+
+    .modal-header {
+      padding: 15px;
+      border-bottom: 2px solid var(--primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-close {
+      background: #ff0000;
+      color: #fff;
+      border: none;
+      padding: 5px 15px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    #ssh-terminal-container {
+      flex: 1;
+      overflow: hidden;
+      cursor: text;
+      background: #000;
+    }
+
+    .ssh-auth-form {
+      padding: 20px;
+      background: rgba(0, 255, 0, 0.1);
+      border: 2px solid var(--primary);
+      margin: 10px;
+    }
+
+    .ssh-auth-form input { margin-bottom: 10px; }
+
+    .qr-container {
+      text-align: center;
+      padding: 20px;
+      background: #fff;
+      border-radius: 10px;
+      margin: 20px 0;
+    }
+
+    .qr-container img { max-width: 200px; }
+
+    .secret-code {
+      font-family: monospace;
+      font-size: 18px;
+      letter-spacing: 3px;
+      padding: 10px;
+      background: rgba(0, 255, 0, 0.1);
+      border: 1px dashed var(--primary);
+      margin: 10px 0;
+    }
+
+    .empty-dashboard {
+      text-align: center;
+      padding: 60px 20px;
+      opacity: 0.7;
+    }
+
+    .group-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+
+    .sub-tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+    .sub-tab {
+      padding: 8px 15px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-color);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .sub-tab.active { background: var(--primary); color: #000; }
+    .sub-content { display: none; }
+    .sub-content.active { display: block; }
+
+    input[type="color"] { width: 50px; height: 30px; padding: 0; border: 1px solid var(--border); cursor: pointer; }
+
+    .inline-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 15px; }
+    .inline-form .form-group { flex: 1; min-width: 120px; margin-bottom: 0; }
+    .inline-form .form-group input, .inline-form .form-group select { margin-bottom: 0; }
+    .inline-form button { height: 36px; }
+  </style>
+</head>
+<body class="matrix-mode">
+  <canvas id="matrix-canvas"></canvas>
+  
+  <div class="main-content">
+    <div class="container">
+      <div id="app"></div>
+    </div>
+  </div>
+
+  <div class="terminal-footer" id="terminal-footer" style="display: none;">
+    <div class="resize-handle" id="resize-handle"></div>
+    <div class="terminal-header">
+      <div class="terminal-title">
+        <span>SYSTEM LOG</span>
+        <div class="terminal-status" id="terminal-status"></div>
+      </div>
+      <div class="terminal-controls">
+        <button onclick="app.clearTerminal()">CLEAR</button>
+        <button onclick="app.toggleTerminal()">v</button>
+        <button onclick="app.expandTerminal()">^</button>
+      </div>
+    </div>
+    <div class="terminal-body" id="terminal-output"></div>
+  </div>
+
+  <div id="ssh-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="ssh-modal-title">SSH Terminal</h2>
+        <button class="modal-close" onclick="app.closeSSHTerminal()">X CLOSE</button>
+      </div>
+      <div id="ssh-auth-container" class="ssh-auth-form">
+        <input type="text" id="ssh-username" placeholder="SSH Username" />
+        <input type="password" id="ssh-password" placeholder="SSH Password" />
+        <button onclick="app.connectSSH()" style="width: 100%;">CONNECT</button>
+      </div>
+      <div id="ssh-terminal-container"></div>
+    </div>
+  </div>
+
+  <div id="2fa-modal" class="modal">
+    <div class="modal-content" style="max-width: 500px; height: auto;">
+      <div class="modal-header">
+        <h2>2FA Setup</h2>
+        <button class="modal-close" onclick="app.close2FAModal()">X CLOSE</button>
+      </div>
+      <div id="2fa-setup-container" style="padding: 20px;"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script>
+    const T = {
+      de: {
+        login: 'ANMELDEN', register: 'REGISTRIEREN', username: 'Benutzername', password: 'Passwort',
+        passwordConfirm: 'Passwort bestaetigen', backToLogin: 'ZURUECK', twoFactorCode: '2FA-Code',
+        dashboard: 'Dashboard', sshServers: 'SSH Server', htmlServers: 'HTML Server',
+        fritzboxMonitor: 'Fritzbox', userManagement: 'Benutzer', settings: 'Einstellungen',
+        add: '+ NEU', update: 'UPDATE', cancel: 'ABBRECHEN', edit: 'EDIT', delete: 'DEL',
+        check: 'CHECK', checkAll: 'ALLE PRUEFEN', openInt: 'INTERN', openExt: 'EXTERN',
+        connect: 'VERBINDEN', close: 'SCHLIESSEN', logout: 'LOGOUT',
+        changePassword: 'PASSWORT AENDERN', resetPassword: 'PW', reset2FA: '2FA',
+        name: 'Name', internalHost: 'Host', externalServer: 'Extern', port: 'Port',
+        ipAddress: 'IP', noServers: 'Keine Server', noFritzboxes: 'Keine Fritzboxen',
+        online: 'ONLINE', offline: 'OFFLINE', active: 'AKTIV', inactive: 'INAKTIV',
+        users: 'Benutzer', groups: 'Gruppen', role: 'Rolle', status: 'Status',
+        admin: 'Admin', user: 'User', you: '(Du)',
+        language: 'Sprache', theme: 'Design', matrixMode: 'Matrix', darkMode: 'Dunkel', lightMode: 'Hell',
+        german: 'Deutsch', english: 'English',
+        newPassword: 'Neues Passwort', confirmPassword: 'Bestaetigen',
+        twoFactorAuth: '2FA', enable2FA: '2FA AN', disable2FA: '2FA AUS', verify: 'VERIFY',
+        noDashboardAccess: 'Kein Dashboard-Zugriff.',
+        groupName: 'Name', description: 'Beschreibung', permissions: 'Rechte',
+        read: 'Lesen', write: 'Schreiben', readWrite: 'Lesen+Schreiben', color: 'Farbe',
+        noGroups: 'Keine Gruppen', noGroup: 'Keine',
+        totalServers: 'Server', totalFritzboxes: 'Fritzboxen', totalUsers: 'Benutzer',
+        systemStatus: 'System Status', allOnline: 'Alle Online', someOffline: 'Offline vorhanden',
+        clickToView: 'Klicken fuer Details',
+        auditLog: 'Protokoll', noAuditLogs: 'Keine Protokolleintraege', action: 'Aktion',
+        target: 'Ziel', details: 'Details', timestamp: 'Zeitpunkt', ipAddr: 'IP-Adresse',
+        clearLogs: 'LOGS LOESCHEN', refreshLogs: 'AKTUALISIEREN'
+      },
+      en: {
+        login: 'LOGIN', register: 'REGISTER', username: 'Username', password: 'Password',
+        passwordConfirm: 'Confirm Password', backToLogin: 'BACK', twoFactorCode: '2FA Code',
+        dashboard: 'Dashboard', sshServers: 'SSH Servers', htmlServers: 'HTML Servers',
+        fritzboxMonitor: 'Fritzbox', userManagement: 'Users', settings: 'Settings',
+        add: '+ NEW', update: 'UPDATE', cancel: 'CANCEL', edit: 'EDIT', delete: 'DEL',
+        check: 'CHECK', checkAll: 'CHECK ALL', openInt: 'INTERNAL', openExt: 'EXTERNAL',
+        connect: 'CONNECT', close: 'CLOSE', logout: 'LOGOUT',
+        changePassword: 'CHANGE PASSWORD', resetPassword: 'PW', reset2FA: '2FA',
+        name: 'Name', internalHost: 'Host', externalServer: 'External', port: 'Port',
+        ipAddress: 'IP', noServers: 'No servers', noFritzboxes: 'No Fritzboxes',
+        online: 'ONLINE', offline: 'OFFLINE', active: 'ACTIVE', inactive: 'INACTIVE',
+        users: 'Users', groups: 'Groups', role: 'Role', status: 'Status',
+        admin: 'Admin', user: 'User', you: '(You)',
+        language: 'Language', theme: 'Theme', matrixMode: 'Matrix', darkMode: 'Dark', lightMode: 'Light',
+        german: 'German', english: 'English',
+        newPassword: 'New Password', confirmPassword: 'Confirm',
+        twoFactorAuth: '2FA', enable2FA: '2FA ON', disable2FA: '2FA OFF', verify: 'VERIFY',
+        noDashboardAccess: 'No dashboard access.',
+        groupName: 'Name', description: 'Description', permissions: 'Permissions',
+        read: 'Read', write: 'Write', readWrite: 'Read+Write', color: 'Color',
+        noGroups: 'No groups', noGroup: 'None',
+        totalServers: 'Servers', totalFritzboxes: 'Fritzboxes', totalUsers: 'Users',
+        systemStatus: 'System Status', allOnline: 'All Online', someOffline: 'Some Offline',
+        clickToView: 'Click for details',
+        auditLog: 'Audit Log', noAuditLogs: 'No audit log entries', action: 'Action',
+        target: 'Target', details: 'Details', timestamp: 'Timestamp', ipAddr: 'IP Address',
+        clearLogs: 'CLEAR LOGS', refreshLogs: 'REFRESH'
+      }
+    };
+
+    function initMatrix(id) {
+      setTimeout(() => {
+        const c = document.getElementById(id);
+        if (!c) return;
+        const x = c.getContext('2d');
+        c.width = window.innerWidth;
+        c.height = window.innerHeight;
+        const m = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*".split("");
+        const f = 10, cols = c.width / f, d = [];
+        for (let i = 0; i < cols; i++) d[i] = Math.floor(Math.random() * c.height / f);
+        setInterval(() => {
+          x.fillStyle = 'rgba(0,0,0,0.04)';
+          x.fillRect(0, 0, c.width, c.height);
+          x.fillStyle = '#0f0';
+          x.font = f + 'px arial';
+          for (let i = 0; i < d.length; i++) {
+            x.fillText(m[Math.floor(Math.random() * m.length)], i * f, d[i] * f);
+            if (d[i] * f > c.height && Math.random() > 0.975) d[i] = 0;
+            d[i]++;
+          }
+        }, 35);
+        window.addEventListener('resize', () => { c.width = window.innerWidth; c.height = window.innerHeight; });
+      }, 100);
+    }
+
+    function waitXterm() {
+      return new Promise(r => {
+        if (typeof Terminal !== 'undefined' && typeof FitAddon !== 'undefined') r();
+        else setTimeout(() => waitXterm().then(r), 100);
+      });
+    }
+
+    initMatrix('matrix-canvas');
+
+    class App {
+      constructor() {
+        this.token = localStorage.getItem('token');
+        this.user = JSON.parse(localStorage.getItem('user') || '{}');
+        this.theme = localStorage.getItem('theme') || 'matrix-mode';
+        this.lang = localStorage.getItem('language') || 'de';
+        this.sshServers = [];
+        this.htmlServers = [];
+        this.fritzboxes = [];
+        this.users = [];
+        this.groups = [];
+        this.auditLogs = [];
+        this.logs = [];
+        this.activeTab = 'dashboard';
+        this.sshTerminal = null;
+        this.sshSocket = null;
+        this.currentSSH = null;
+        this.fitAddon = null;
+        this.twoFA = false;
+        this.terminalMin = 50;
+        this.terminalMax = 400;
+        this.terminalHeight = 200;
+        
+        document.body.className = this.theme;
+        this.initResize();
+        this.init();
+      }
+
+      t(k) { return T[this.lang][k] || k; }
+
+      init() {
+        this.log('info', 'SSH Matrix v1.0');
+        this.log('info', new Date().toLocaleString());
+        this.token ? this.loadDashboard() : this.showLogin();
+      }
+
+      initResize() {
+        const h = document.getElementById('resize-handle');
+        const f = document.getElementById('terminal-footer');
+        let startY, startH;
+        if (h) {
+          h.addEventListener('mousedown', e => {
+            startY = e.clientY;
+            startH = f.offsetHeight;
+            const move = e => {
+              const diff = startY - e.clientY;
+              const newH = Math.min(this.terminalMax, Math.max(this.terminalMin, startH + diff));
+              f.style.height = newH + 'px';
+              document.documentElement.style.setProperty('--terminal-height', newH + 'px');
+            };
+            const stop = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', stop); };
+            document.addEventListener('mousemove', move);
+            document.addEventListener('mouseup', stop);
+          });
+        }
+      }
+
+      toggleTerminal() {
+        const f = document.getElementById('terminal-footer');
+        f.style.height = this.terminalMin + 'px';
+        document.documentElement.style.setProperty('--terminal-height', this.terminalMin + 'px');
+      }
+
+      expandTerminal() {
+        const f = document.getElementById('terminal-footer');
+        f.style.height = this.terminalMax + 'px';
+        document.documentElement.style.setProperty('--terminal-height', this.terminalMax + 'px');
+      }
+
+      log(type, msg) {
+        const ts = new Date().toLocaleTimeString();
+        this.logs.push({ type, msg, ts });
+        if (this.logs.length > 1000) this.logs.shift();
+        this.updateTerminal();
+      }
+
+      updateTerminal() {
+        const o = document.getElementById('terminal-output');
+        if (!o) return;
+        o.innerHTML = this.logs.map(l => '<div class="terminal-line ' + l.type + '">[' + l.ts + '] ' + l.msg + '</div>').join('');
+        o.scrollTop = o.scrollHeight;
+      }
+
+      updateStatus() {
+        const s = document.getElementById('terminal-status');
+        if (!s) return;
+        const sshOn = this.sshServers.filter(x => x.status === 'online').length;
+        const htmlOn = this.htmlServers.filter(x => x.status === 'online').length;
+        const fbOn = this.fritzboxes.filter(x => x.status === 'online').length;
+        s.innerHTML = '<div class="terminal-status-item"><span class="status-dot ' + (sshOn === this.sshServers.length && this.sshServers.length > 0 ? 'online' : 'offline') + '"></span>SSH: ' + sshOn + '/' + this.sshServers.length + '</div>' +
+          '<div class="terminal-status-item"><span class="status-dot ' + (htmlOn === this.htmlServers.length && this.htmlServers.length > 0 ? 'online' : 'offline') + '"></span>HTML: ' + htmlOn + '/' + this.htmlServers.length + '</div>' +
+          '<div class="terminal-status-item"><span class="status-dot ' + (fbOn === this.fritzboxes.length && this.fritzboxes.length > 0 ? 'online' : 'offline') + '"></span>FB: ' + fbOn + '/' + this.fritzboxes.length + '</div>';
+      }
+
+      clearTerminal() {
+        this.logs = [];
+        this.log('info', 'Log geleert');
+        this.log('info', new Date().toLocaleString());
+      }
+
+      showLogin() {
+        document.body.className = 'matrix-mode';
+        document.getElementById('terminal-footer').style.display = 'none';
+        document.getElementById('app').innerHTML = '<canvas id="login-canvas"></canvas>' +
+          '<div style="position:relative;z-index:10;display:flex;justify-content:center;align-items:center;height:100vh">' +
+            '<div class="login-box">' +
+              '<h1>SSH MATRIX</h1>' +
+              '<div id="login-form">' +
+                '<input type="text" id="username" placeholder="' + this.t('username') + '" />' +
+                '<input type="password" id="password" placeholder="' + this.t('password') + '" />' +
+                '<div id="2fa-input" style="display:none"><input type="text" id="totp-token" placeholder="' + this.t('twoFactorCode') + '" maxlength="6" /></div>' +
+                '<button onclick="app.login()" style="width:100%;margin-bottom:10px">' + this.t('login') + '</button>' +
+                '<button onclick="app.showReg()" class="btn-outline" style="width:100%">' + this.t('register') + '</button>' +
+              '</div>' +
+              '<div id="register-form" style="display:none">' +
+                '<input type="text" id="reg-username" placeholder="' + this.t('username') + '" />' +
+                '<input type="password" id="reg-password" placeholder="' + this.t('password') + '" />' +
+                '<input type="password" id="reg-password-confirm" placeholder="' + this.t('passwordConfirm') + '" />' +
+                '<button onclick="app.register()" style="width:100%;margin-bottom:10px">' + this.t('register') + '</button>' +
+                '<button onclick="app.showLoginForm()" class="btn-outline" style="width:100%">' + this.t('backToLogin') + '</button>' +
+              '</div>' +
+              '<div style="margin-top:20px"><select onchange="app.setLang(this.value)" style="width:100%"><option value="de" ' + (this.lang === 'de' ? 'selected' : '') + '>Deutsch</option><option value="en" ' + (this.lang === 'en' ? 'selected' : '') + '>English</option></select></div>' +
+            '</div>' +
+          '</div>';
+        initMatrix('login-canvas');
+        const el = document.getElementById('username');
+        if (el) el.focus();
+      }
+
+      showReg() { document.getElementById('login-form').style.display = 'none'; document.getElementById('register-form').style.display = 'block'; }
+      showLoginForm() { document.getElementById('login-form').style.display = 'block'; document.getElementById('register-form').style.display = 'none'; }
+
+      async register() {
+        const u = document.getElementById('reg-username').value;
+        const p = document.getElementById('reg-password').value;
+        const c = document.getElementById('reg-password-confirm').value;
+        if (!u || !p || p !== c || p.length < 6) { alert('Invalid'); return; }
+        const r = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
+        if (r.ok) { alert('OK! Admin muss freigeben.'); this.showLoginForm(); } else { const d = await r.json(); alert(d.error); }
+      }
+
+      async login() {
+        const uEl = document.getElementById('username');
+        const pEl = document.getElementById('password');
+        const tEl = document.getElementById('totp-token');
+        const u = (uEl ? uEl.value : '') || this.pendU;
+        const p = (pEl ? pEl.value : '') || this.pendP;
+        const t = tEl ? tEl.value : '';
+        if (!u || !p) return;
+        const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p, totpToken: t }) });
+        const d = await r.json();
+        if (d.requires2FA) { this.pendU = u; this.pendP = p; document.getElementById('2fa-input').style.display = 'block'; if (tEl) tEl.focus(); return; }
+        if (r.ok) {
+          localStorage.setItem('token', d.token);
+          localStorage.setItem('user', JSON.stringify(d.user));
+          this.token = d.token;
+          this.user = d.user;
+          this.twoFA = d.user.totpEnabled;
+          document.getElementById('terminal-footer').style.display = 'flex';
+          this.loadDashboard();
+        } else alert(d.error);
+      }
+
+      async loadDashboard() {
+        this.log('success', '------------------------------');
+        this.log('info', 'Login: ' + this.user.username + ' (' + this.user.role + ')');
+        await this.loadServers();
+        await this.loadGroups();
+        await this.load2FA();
+        if (this.user.role === 'admin') await this.loadAuditLogs();
+        this.logStatus();
+        this.render();
+        this.updateStatus();
+      }
+
+      logStatus() {
+        this.log('success', '------------------------------');
+        this.log('info', 'SERVER STATUS');
+        this.log('success', '------------------------------');
+        
+        this.log('info', 'SSH (' + this.sshServers.length + '):');
+        this.sshServers.forEach(s => {
+          const icon = s.status === 'online' ? 'OK' : 'FAIL';
+          this.log(s.status === 'online' ? 'success' : 'error', '   ' + icon + ' ' + s.name + ' (' + s.host + ':' + s.port + ') - ' + s.status.toUpperCase());
+        });
+
+        this.log('info', 'HTML (' + this.htmlServers.length + '):');
+        this.htmlServers.forEach(s => {
+          const icon = s.status === 'online' ? 'OK' : 'FAIL';
+          this.log(s.status === 'online' ? 'success' : 'error', '   ' + icon + ' ' + s.name + ' (' + s.protocol + '://' + s.host + ':' + s.port + ') - ' + s.status.toUpperCase());
+        });
+
+        this.log('info', 'FRITZBOX (' + this.fritzboxes.length + '):');
+        this.fritzboxes.forEach(f => {
+          const icon = f.status === 'online' ? 'OK' : 'FAIL';
+          this.log(f.status === 'online' ? 'success' : 'error', '   ' + icon + ' ' + f.name + ' (' + f.ip + ') - ' + f.status.toUpperCase());
+        });
+
+        this.log('success', '------------------------------');
+        const on = this.sshServers.filter(s => s.status === 'online').length + this.htmlServers.filter(s => s.status === 'online').length + this.fritzboxes.filter(s => s.status === 'online').length;
+        const total = this.sshServers.length + this.htmlServers.length + this.fritzboxes.length;
+        this.log(on === total && total > 0 ? 'success' : 'warning', (on === total && total > 0 ? this.t('allOnline') : on + '/' + total + ' Online'));
+      }
+
+      async load2FA() {
+        try {
+          const r = await fetch('/api/2fa/status', { headers: { 'Authorization': 'Bearer ' + this.token } });
+          if (r.ok) this.twoFA = (await r.json()).enabled;
+        } catch (e) {}
+      }
+
+      async loadServers() {
+        try {
+          const h = { 'Authorization': 'Bearer ' + this.token };
+          const [r1, r2, r3] = await Promise.all([
+            fetch('/api/ssh-servers', { headers: h }),
+            fetch('/api/html-servers', { headers: h }),
+            fetch('/api/fritzboxes', { headers: h })
+          ]);
+          this.sshServers = await r1.json();
+          this.htmlServers = await r2.json();
+          this.fritzboxes = await r3.json();
+          if (this.user.role === 'admin') {
+            const r4 = await fetch('/api/users', { headers: h });
+            if (r4.ok) this.users = await r4.json();
+          }
+        } catch (e) { this.log('error', 'Load error: ' + e.message); }
+      }
+
+      async loadGroups() {
+        try {
+          const r = await fetch('/api/groups', { headers: { 'Authorization': 'Bearer ' + this.token } });
+          if (r.ok) this.groups = await r.json();
+        } catch (e) {}
+      }
+
+      async loadAuditLogs() {
+        try {
+          const r = await fetch('/api/audit-logs?limit=100', { headers: { 'Authorization': 'Bearer ' + this.token } });
+          if (r.ok) {
+            const data = await r.json();
+            this.auditLogs = data.logs || [];
+          }
+        } catch (e) {}
+      }
+
+      render() {
+        document.body.className = this.theme;
+        const canView = this.user.role === 'admin' || this.user.canViewDashboard;
+        const adminTab = this.user.role === 'admin' ? '<div class="tab" onclick="app.switchTab(\'users\')">' + this.t('userManagement') + '</div>' : '';
+
+        const sshOn = this.sshServers.filter(s => s.status === 'online').length;
+        const htmlOn = this.htmlServers.filter(s => s.status === 'online').length;
+        const fbOn = this.fritzboxes.filter(s => s.status === 'online').length;
+        const totalOn = sshOn + htmlOn + fbOn;
+        const total = this.sshServers.length + this.htmlServers.length + this.fritzboxes.length;
+
+        const sshList = this.sshServers.map(s => 
+          '<div class="server-item"><div class="server-info"><div class="server-name">' + s.name + '</div><div class="server-host">' + s.host + ':' + s.port + (s.description ? ' | ' + s.description : '') + (s.external_url ? ' | EXT: ' + s.external_url : '') + '</div></div>' +
+          '<div class="status ' + s.status + '">' + s.status.toUpperCase() + '</div>' +
+          '<div class="actions"><button onclick="app.openSSH(' + s.id + ')">SSH</button>' + (s.external_url ? '<button onclick="window.open(\'' + s.external_url + '\',\'_blank\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'ssh\',' + s.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'ssh\',' + s.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'ssh\',' + s.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
+        ).join('');
+
+        const htmlList = this.htmlServers.map(s =>
+          '<div class="server-item"><div class="server-info"><div class="server-name">' + s.name + '</div><div class="server-host">' + s.protocol + '://' + s.host + ':' + s.port + (s.description ? ' | ' + s.description : '') + (s.external_url ? ' | EXT: ' + s.external_url : '') + '</div></div>' +
+          '<div class="status ' + s.status + '">' + s.status.toUpperCase() + '</div>' +
+          '<div class="actions"><button onclick="window.open(\'' + s.protocol + '://' + s.host + ':' + s.port + '\',\'_blank\')">' + this.t('openInt') + '</button>' + (s.external_url ? '<button onclick="window.open(\'' + s.external_url + '\',\'_blank\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'html\',' + s.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'html\',' + s.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'html\',' + s.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
+        ).join('');
+
+        const fbList = this.fritzboxes.map(f =>
+          '<div class="server-item"><div class="server-info"><div class="server-name">' + f.name + '</div><div class="server-host">' + f.ip + (f.external_url ? ' | EXT: ' + f.external_url : '') + '</div></div>' +
+          '<div class="status ' + f.status + '">' + f.status.toUpperCase() + '</div>' +
+          '<div class="actions"><button onclick="window.open(\'http://' + f.ip + '\',\'_blank\')">' + this.t('openInt') + '</button>' + (f.external_url ? '<button onclick="window.open(\'' + f.external_url + '\',\'_blank\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'fritzbox\',' + f.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'fb\',' + f.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'fritzbox\',' + f.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
+        ).join('');
+
+        const groupList = this.groups.map(g =>
+          '<div class="server-item" style="border-left-color:' + g.color + '"><div class="server-info"><div class="server-name"><span class="group-badge" style="background:' + g.color + ';color:#000">' + g.name + '</span></div><div class="server-host">' + (g.description || '-') + ' | ' + g.permissions + '</div></div>' +
+          '<div class="actions"><button onclick="app.editGroup(' + g.id + ')">' + this.t('edit') + '</button><button onclick="app.delGroup(' + g.id + ')">' + this.t('delete') + '</button></div></div>'
+        ).join('');
+
+        const userList = this.users.map(u =>
+          '<div class="server-item" style="border-left-color:' + (u.group_color || 'var(--primary)') + '"><div class="server-info"><div class="server-name">' + u.username + (u.group_name ? ' <span class="group-badge" style="background:' + u.group_color + ';color:#000">' + u.group_name + '</span>' : '') + '</div><div class="server-host">' + u.role + ' | ' + u.status + ' | Dash:' + (u.can_view_dashboard ? 'Y' : 'N') + ' | 2FA:' + (u.totp_enabled ? 'Y' : 'N') + '</div></div>' +
+          '<div class="status ' + (u.status === 'active' ? 'online' : 'offline') + '">' + (u.status === 'active' ? this.t('active') : this.t('inactive')) + '</div>' +
+          '<div class="actions">' + (u.id !== this.user.id ? 
+            '<select onchange="app.setRole(' + u.id + ',this.value)" style="width:65px"><option value="user" ' + (u.role === 'user' ? 'selected' : '') + '>User</option><option value="admin" ' + (u.role === 'admin' ? 'selected' : '') + '>Admin</option></select>' +
+            '<select onchange="app.setStatus(' + u.id + ',this.value)" style="width:70px"><option value="active" ' + (u.status === 'active' ? 'selected' : '') + '>Active</option><option value="inactive" ' + (u.status === 'inactive' ? 'selected' : '') + '>Inactive</option></select>' +
+            '<select onchange="app.setGroup(' + u.id + ',this.value)" style="width:80px"><option value="">' + this.t('noGroup') + '</option>' + this.groups.map(g => '<option value="' + g.id + '" ' + (u.group_id === g.id ? 'selected' : '') + '>' + g.name + '</option>').join('') + '</select>' +
+            '<input type="checkbox" ' + (u.can_view_dashboard ? 'checked' : '') + ' onchange="app.setDash(' + u.id + ',this.checked)" style="width:16px" title="Dashboard">' +
+            '<button onclick="app.resetPW(' + u.id + ')">' + this.t('resetPassword') + '</button>' +
+            '<button onclick="app.delUser(' + u.id + ')">' + this.t('delete') + '</button>'
+          : this.t('you')) + '</div></div>'
+        ).join('');
+
+        const form = (type) => this.user.role === 'admin' ? 
+          '<div class="inline-form">' +
+            '<input type="hidden" id="' + type + '-edit-id" value="" />' +
+            '<div class="form-group"><input type="text" id="' + type + '-name" placeholder="' + this.t('name') + '" /></div>' +
+            '<div class="form-group"><input type="text" id="' + type + '-' + (type === 'fb' ? 'ip' : 'host') + '" placeholder="' + (type === 'fb' ? this.t('ipAddress') : this.t('internalHost')) + '" /></div>' +
+            (type !== 'fb' ? '<div class="form-group" style="width:80px"><input type="number" id="' + type + '-port" placeholder="Port" value="' + (type === 'ssh' ? '22' : '80') + '" /></div>' : '') +
+            (type === 'html' ? '<div class="form-group" style="width:80px"><select id="html-protocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></div>' : '') +
+            (type !== 'fb' ? '<div class="form-group"><input type="text" id="' + type + '-desc" placeholder="' + this.t('description') + '" /></div>' : '') +
+            '<div class="form-group"><input type="text" id="' + type + '-external" placeholder="' + this.t('externalServer') + ' (URL)" /></div>' +
+            '<button onclick="app.save(\'' + type + '\')" id="' + type + '-save-btn">' + this.t('add') + '</button>' +
+            '<button onclick="app.cancelEdit(\'' + type + '\')" style="display:none;background:#666" id="' + type + '-cancel-btn">' + this.t('cancel') + '</button>' +
+          '</div>'
+        : '';
+
+        document.getElementById('app').innerHTML = 
+          '<div class="header"><div class="title">SSH MATRIX</div><div class="controls"><span>' + this.user.username + ' (' + this.user.role + ')</span></div></div>' +
+          '<div class="tabs">' +
+            '<div class="tab active" onclick="app.switchTab(\'dashboard\')">' + this.t('dashboard') + '</div>' +
+            '<div class="tab" onclick="app.switchTab(\'ssh\')">' + this.t('sshServers') + '</div>' +
+            '<div class="tab" onclick="app.switchTab(\'html\')">' + this.t('htmlServers') + '</div>' +
+            '<div class="tab" onclick="app.switchTab(\'fritzbox\')">' + this.t('fritzboxMonitor') + '</div>' +
+            adminTab +
+            '<div class="tab" onclick="app.switchTab(\'settings\')">' + this.t('settings') + '</div>' +
+          '</div>' +
+
+          '<div id="tab-dashboard" class="tab-content active">' +
+            (canView ? 
+              '<div class="stats-grid">' +
+                '<div class="stat-card clickable" onclick="app.switchTab(\'ssh\')"><div class="stat-icon">SSH</div><div class="stat-title">' + this.t('sshServers') + '</div><div class="stat-value">' + this.sshServers.length + '</div><div class="stat-details"><span class="stat-online">' + sshOn + ' Online</span><span class="stat-offline">' + (this.sshServers.length - sshOn) + ' Offline</span></div><div class="stat-subtitle">' + this.t('clickToView') + '</div></div>' +
+                '<div class="stat-card clickable" onclick="app.switchTab(\'html\')"><div class="stat-icon">WEB</div><div class="stat-title">' + this.t('htmlServers') + '</div><div class="stat-value">' + this.htmlServers.length + '</div><div class="stat-details"><span class="stat-online">' + htmlOn + ' Online</span><span class="stat-offline">' + (this.htmlServers.length - htmlOn) + ' Offline</span></div><div class="stat-subtitle">' + this.t('clickToView') + '</div></div>' +
+                '<div class="stat-card clickable" onclick="app.switchTab(\'fritzbox\')"><div class="stat-icon">FB</div><div class="stat-title">' + this.t('fritzboxMonitor') + '</div><div class="stat-value">' + this.fritzboxes.length + '</div><div class="stat-details"><span class="stat-online">' + fbOn + ' Online</span><span class="stat-offline">' + (this.fritzboxes.length - fbOn) + ' Offline</span></div><div class="stat-subtitle">' + this.t('clickToView') + '</div></div>' +
+                '<div class="stat-card"><div class="stat-icon">' + (totalOn === total && total > 0 ? 'OK' : '!') + '</div><div class="stat-title">' + this.t('systemStatus') + '</div><div class="stat-value">' + totalOn + '/' + total + '</div><div class="stat-details">' + (totalOn === total && total > 0 ? '<span class="stat-online">' + this.t('allOnline') + '</span>' : '<span class="stat-offline">' + this.t('someOffline') + '</span>') + '</div><div class="stat-subtitle"><button onclick="app.checkAll()" style="margin-top:10px">' + this.t('checkAll') + '</button></div></div>' +
+              '</div>' +
+              (this.user.role === 'admin' ? '<div class="stats-grid" style="margin-top:20px"><div class="stat-card clickable" onclick="app.switchTab(\'users\')"><div class="stat-icon">USER</div><div class="stat-title">' + this.t('totalUsers') + '</div><div class="stat-value">' + this.users.length + '</div><div class="stat-details"><span class="stat-online">' + this.users.filter(u => u.status === 'active').length + ' ' + this.t('active') + '</span><span class="stat-offline">' + this.users.filter(u => u.status !== 'active').length + ' ' + this.t('inactive') + '</span></div></div></div>' : '')
+            : '<div class="empty-dashboard"><h2>ACCESS DENIED</h2><p>' + this.t('noDashboardAccess') + '</p></div>') +
+          '</div>' +
+
+          '<div id="tab-ssh" class="tab-content"><div class="section"><h2>' + this.t('sshServers') + ' (' + sshOn + '/' + this.sshServers.length + ' Online)</h2>' + form('ssh') + (sshList || '<p>' + this.t('noServers') + '</p>') + '</div></div>' +
+          '<div id="tab-html" class="tab-content"><div class="section"><h2>' + this.t('htmlServers') + ' (' + htmlOn + '/' + this.htmlServers.length + ' Online)</h2>' + form('html') + (htmlList || '<p>' + this.t('noServers') + '</p>') + '</div></div>' +
+          '<div id="tab-fritzbox" class="tab-content"><div class="section"><h2>' + this.t('fritzboxMonitor') + ' (' + fbOn + '/' + this.fritzboxes.length + ' Online)</h2>' + form('fb') + (fbList || '<p>' + this.t('noFritzboxes') + '</p>') + '</div></div>' +
+
+          (this.user.role === 'admin' ? 
+            '<div id="tab-users" class="tab-content"><div class="section"><h2>' + this.t('userManagement') + '</h2>' +
+              '<div class="sub-tabs"><div class="sub-tab active" onclick="app.subTab(\'users\')">' + this.t('users') + '</div><div class="sub-tab" onclick="app.subTab(\'groups\')">' + this.t('groups') + '</div><div class="sub-tab" onclick="app.subTab(\'audit\')">' + this.t('auditLog') + '</div></div>' +
+              '<div id="sub-users" class="sub-content active">' + userList + '</div>' +
+              '<div id="sub-groups" class="sub-content">' +
+                '<div class="inline-form"><input type="hidden" id="group-edit-id" value="" /><div class="form-group"><input type="text" id="group-name" placeholder="' + this.t('groupName') + '" /></div><div class="form-group"><input type="text" id="group-desc" placeholder="' + this.t('description') + '" /></div><div class="form-group" style="width:120px"><select id="group-perm"><option value="read">' + this.t('read') + '</option><option value="write">' + this.t('write') + '</option><option value="read,write">' + this.t('readWrite') + '</option></select></div><div class="form-group" style="width:60px"><input type="color" id="group-color" value="#00ff00" /></div><button onclick="app.saveGroup()" id="group-save-btn">' + this.t('add') + '</button><button onclick="app.cancelGroupEdit()" style="display:none;background:#666" id="group-cancel-btn">' + this.t('cancel') + '</button></div>' +
+                '<div style="margin-top:15px">' + (groupList || '<p>' + this.t('noGroups') + '</p>') + '</div>' +
+              '</div>' +
+              '<div id="sub-audit" class="sub-content">' +
+                '<div style="margin-bottom:15px"><button onclick="app.refreshAuditLogs()">' + this.t('refreshLogs') + '</button><button onclick="app.clearAuditLogs()" style="background:#f60;margin-left:10px">' + this.t('clearLogs') + '</button></div>' +
+                '<div style="max-height:400px;overflow-y:auto">' +
+                (this.auditLogs.length > 0 ? 
+                  '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+                    '<tr style="background:rgba(0,255,0,0.2)"><th style="padding:8px;text-align:left;border:1px solid var(--border)">' + this.t('timestamp') + '</th><th style="padding:8px;text-align:left;border:1px solid var(--border)">' + this.t('username') + '</th><th style="padding:8px;text-align:left;border:1px solid var(--border)">' + this.t('action') + '</th><th style="padding:8px;text-align:left;border:1px solid var(--border)">' + this.t('target') + '</th><th style="padding:8px;text-align:left;border:1px solid var(--border)">' + this.t('details') + '</th><th style="padding:8px;text-align:left;border:1px solid var(--border)">' + this.t('ipAddr') + '</th></tr>' +
+                    this.auditLogs.map(log => '<tr><td style="padding:6px;border:1px solid var(--border)">' + new Date(log.created_at).toLocaleString() + '</td><td style="padding:6px;border:1px solid var(--border)">' + (log.username || '-') + '</td><td style="padding:6px;border:1px solid var(--border)">' + log.action + '</td><td style="padding:6px;border:1px solid var(--border)">' + (log.target_type ? log.target_type + (log.target_name ? ': ' + log.target_name : '') : '-') + '</td><td style="padding:6px;border:1px solid var(--border)">' + (log.details || '-') + '</td><td style="padding:6px;border:1px solid var(--border)">' + (log.ip_address || '-') + '</td></tr>').join('') +
+                  '</table>'
+                : '<p>' + this.t('noAuditLogs') + '</p>') +
+                '</div>' +
+              '</div>' +
+            '</div></div>'
+          : '') +
+
+          '<div id="tab-settings" class="tab-content"><div class="section"><h2>' + this.t('settings') + '</h2>' +
+            '<div class="form-group"><label>' + this.t('language') + ':</label><select onchange="app.setLang(this.value)"><option value="de" ' + (this.lang === 'de' ? 'selected' : '') + '>' + this.t('german') + '</option><option value="en" ' + (this.lang === 'en' ? 'selected' : '') + '>' + this.t('english') + '</option></select></div>' +
+            '<hr style="border:1px solid var(--border);margin:20px 0">' +
+            '<div class="form-group"><label>' + this.t('theme') + ':</label><select onchange="app.setTheme(this.value)"><option value="matrix-mode" ' + (this.theme === 'matrix-mode' ? 'selected' : '') + '>' + this.t('matrixMode') + '</option><option value="dark-mode" ' + (this.theme === 'dark-mode' ? 'selected' : '') + '>' + this.t('darkMode') + '</option><option value="light-mode" ' + (this.theme === 'light-mode' ? 'selected' : '') + '>' + this.t('lightMode') + '</option></select></div>' +
+            '<hr style="border:1px solid var(--border);margin:20px 0">' +
+            '<div class="form-group"><label>' + this.t('twoFactorAuth') + ':</label><div style="margin-top:10px">' + (this.twoFA ? '<button onclick="app.disable2FA()" style="background:#f60">' + this.t('disable2FA') + '</button>' : '<button onclick="app.setup2FA()">' + this.t('enable2FA') + '</button>') + '</div></div>' +
+            '<hr style="border:1px solid var(--border);margin:20px 0">' +
+            '<div class="form-group"><label>' + this.t('changePassword') + ':</label><input type="password" id="new-pw" placeholder="' + this.t('newPassword') + '" /><input type="password" id="new-pw-confirm" placeholder="' + this.t('confirmPassword') + '" /><button onclick="app.changePW()" style="width:100%">' + this.t('changePassword') + '</button></div>' +
+            '<hr style="border:1px solid var(--border);margin:20px 0">' +
+            '<button onclick="app.logout()" style="width:100%;padding:15px;background:#f00;color:#fff">' + this.t('logout') + '</button>' +
+          '</div></div>';
+        this.updateTerminal();
+      }
+
+      switchTab(n) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        const tabs = document.querySelectorAll('.tab');
+        const idx = { dashboard: 0, ssh: 1, html: 2, fritzbox: 3, users: this.user.role === 'admin' ? 4 : -1, settings: this.user.role === 'admin' ? 5 : 4 };
+        if (idx[n] >= 0 && tabs[idx[n]]) tabs[idx[n]].classList.add('active');
+        const el = document.getElementById('tab-' + n);
+        if (el) el.classList.add('active');
+        this.activeTab = n;
+        this.log('info', n.toUpperCase());
+      }
+
+      subTab(n) {
+        document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.sub-content').forEach(c => c.classList.remove('active'));
+        const tabs = document.querySelectorAll('.sub-tab');
+        if (n === 'users' && tabs[0]) tabs[0].classList.add('active');
+        else if (n === 'groups' && tabs[1]) tabs[1].classList.add('active');
+        else if (n === 'audit' && tabs[2]) tabs[2].classList.add('active');
+        const el = document.getElementById('sub-' + n);
+        if (el) el.classList.add('active');
+      }
+
+      async refreshAuditLogs() {
+        await this.loadAuditLogs();
+        this.render();
+        this.switchTab('users');
+        setTimeout(() => this.subTab('audit'), 50);
+        this.log('info', 'Audit Logs aktualisiert');
+      }
+
+      async clearAuditLogs() {
+        if (!confirm('Alle Audit-Logs loeschen?')) return;
+        try {
+          const r = await fetch('/api/audit-logs', { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + this.token } });
+          if (r.ok) {
+            this.auditLogs = [];
+            this.render();
+            this.switchTab('users');
+            setTimeout(() => this.subTab('audit'), 50);
+            this.log('warning', 'Audit Logs geloescht');
+          }
+        } catch (e) { this.log('error', 'Fehler: ' + e.message); }
+      }
+
+      async checkAll() {
+        this.log('info', 'Pruefe alle Server...');
+        for (const s of this.sshServers) await this.check('ssh', s.id, false);
+        for (const s of this.htmlServers) await this.check('html', s.id, false);
+        for (const s of this.fritzboxes) await this.check('fritzbox', s.id, false);
+        await this.loadServers();
+        this.logStatus();
+        this.render();
+        this.updateStatus();
+      }
+
+      async check(type, id, refresh = true) {
+        const r = await fetch('/api/check-status/' + type + '/' + id, { method: 'POST', headers: { 'Authorization': 'Bearer ' + this.token } });
+        const d = await r.json();
+        const s = type === 'ssh' ? this.sshServers.find(x => x.id === id) : type === 'html' ? this.htmlServers.find(x => x.id === id) : this.fritzboxes.find(x => x.id === id);
+        const icon = d.status === 'online' ? 'OK' : 'FAIL';
+        this.log(d.status === 'online' ? 'success' : 'error', icon + ' ' + type.toUpperCase() + ' "' + (s ? s.name : id) + '": ' + (d.status ? d.status.toUpperCase() : 'ERROR'));
+        if (refresh) { await this.loadServers(); this.render(); this.updateStatus(); this.switchTab(this.activeTab); }
+      }
+
+      async save(type) {
+        const id = document.getElementById(type + '-edit-id').value;
+        const name = document.getElementById(type + '-name').value;
+        const host = document.getElementById(type + (type === 'fb' ? '-ip' : '-host')).value;
+        if (!name || !host) { alert('Name + Host required'); return; }
+        let body = { name: name };
+        if (type === 'fb') { 
+          body.ip = host; 
+          body.external_url = document.getElementById('fb-external').value || ''; 
+        } else { 
+          body.host = host; 
+          body.port = document.getElementById(type + '-port').value; 
+          body.description = document.getElementById(type + '-desc').value || ''; 
+          body.external_url = document.getElementById(type + '-external').value || '';
+        }
+        if (type === 'html') body.protocol = document.getElementById('html-protocol').value;
+        const ep = type === 'ssh' ? '/api/ssh-servers' : type === 'html' ? '/api/html-servers' : '/api/fritzboxes';
+        await fetch(id ? ep + '/' + id : ep, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify(body) });
+        this.log('success', type.toUpperCase() + ' "' + name + '" ' + (id ? 'updated' : 'added'));
+        this.cancelEdit(type);
+        await this.loadServers();
+        this.render();
+        this.updateStatus();
+        this.switchTab(type === 'fb' ? 'fritzbox' : type);
+      }
+
+      edit(type, id) {
+        const s = type === 'ssh' ? this.sshServers.find(x => x.id === id) : type === 'html' ? this.htmlServers.find(x => x.id === id) : this.fritzboxes.find(x => x.id === id);
+        if (!s) return;
+        const t = type === 'fritzbox' ? 'fb' : type;
+        document.getElementById(t + '-edit-id').value = s.id;
+        document.getElementById(t + '-name').value = s.name;
+        if (type === 'fb' || type === 'fritzbox') {
+          document.getElementById('fb-ip').value = s.ip;
+          document.getElementById('fb-external').value = s.external_url || '';
+        } else {
+          document.getElementById(t + '-host').value = s.host;
+          document.getElementById(t + '-port').value = s.port;
+          document.getElementById(t + '-desc').value = s.description || '';
+          document.getElementById(t + '-external').value = s.external_url || '';
+          if (type === 'html') document.getElementById('html-protocol').value = s.protocol;
+        }
+        document.getElementById(t + '-save-btn').textContent = this.t('update');
+        document.getElementById(t + '-cancel-btn').style.display = 'inline-block';
+      }
+
+      cancelEdit(type) {
+        const el = i => document.getElementById(i);
+        el(type + '-edit-id').value = '';
+        el(type + '-name').value = '';
+        el(type + '-external').value = '';
+        if (type === 'fb') { el('fb-ip').value = ''; }
+        else { el(type + '-host').value = ''; el(type + '-port').value = type === 'ssh' ? '22' : '80'; el(type + '-desc').value = ''; if (type === 'html') el('html-protocol').value = 'http'; }
+        el(type + '-save-btn').textContent = this.t('add');
+        el(type + '-cancel-btn').style.display = 'none';
+      }
+
+      async del(type, id) {
+        if (!confirm('Delete?')) return;
+        const ep = type === 'ssh' ? '/api/ssh-servers' : type === 'html' ? '/api/html-servers' : '/api/fritzboxes';
+        await fetch(ep + '/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + this.token } });
+        this.log('warning', type.toUpperCase() + ' deleted');
+        await this.loadServers();
+        this.render();
+        this.updateStatus();
+        this.switchTab(type === 'fritzbox' ? 'fritzbox' : type);
+      }
+
+      async saveGroup() {
+        const id = document.getElementById('group-edit-id').value;
+        const name = document.getElementById('group-name').value;
+        const description = document.getElementById('group-desc').value;
+        const permissions = document.getElementById('group-perm').value;
+        const color = document.getElementById('group-color').value;
+        if (!name) { alert('Name required'); return; }
+        await fetch(id ? '/api/groups/' + id : '/api/groups', { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ name: name, description: description, permissions: permissions, color: color }) });
+        this.log('success', 'Group "' + name + '" ' + (id ? 'updated' : 'added'));
+        this.cancelGroupEdit();
+        await this.loadGroups();
+        this.render();
+        this.switchTab('users');
+        setTimeout(() => this.subTab('groups'), 50);
+      }
+
+      editGroup(id) {
+        const g = this.groups.find(x => x.id === id);
+        if (!g) return;
+        document.getElementById('group-edit-id').value = g.id;
+        document.getElementById('group-name').value = g.name;
+        document.getElementById('group-desc').value = g.description || '';
+        document.getElementById('group-perm').value = g.permissions;
+        document.getElementById('group-color').value = g.color || '#00ff00';
+        document.getElementById('group-save-btn').textContent = this.t('update');
+        document.getElementById('group-cancel-btn').style.display = 'inline-block';
+      }
+
+      cancelGroupEdit() {
+        document.getElementById('group-edit-id').value = '';
+        document.getElementById('group-name').value = '';
+        document.getElementById('group-desc').value = '';
+        document.getElementById('group-perm').value = 'read';
+        document.getElementById('group-color').value = '#00ff00';
+        document.getElementById('group-save-btn').textContent = this.t('add');
+        document.getElementById('group-cancel-btn').style.display = 'none';
+      }
+
+      async delGroup(id) {
+        if (!confirm('Delete group?')) return;
+        await fetch('/api/groups/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + this.token } });
+        this.log('warning', 'Group deleted');
+        await this.loadGroups();
+        this.render();
+        this.switchTab('users');
+        setTimeout(() => this.subTab('groups'), 50);
+      }
+
+      async setRole(id, v) { await fetch('/api/users/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ role: v }) }); this.log('info', 'Role: ' + v); await this.loadServers(); this.render(); this.switchTab('users'); }
+      async setStatus(id, v) { await fetch('/api/users/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ status: v }) }); this.log('info', 'Status: ' + v); await this.loadServers(); this.render(); this.switchTab('users'); }
+      async setDash(id, v) { await fetch('/api/users/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ canViewDashboard: v }) }); this.log('info', 'Dashboard: ' + (v ? 'ON' : 'OFF')); await this.loadServers(); this.render(); this.switchTab('users'); }
+      async setGroup(id, v) { await fetch('/api/users/' + id + '/group', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ groupId: v || null }) }); this.log('info', 'Group updated'); await this.loadServers(); this.render(); this.switchTab('users'); }
+      async resetPW(id) { if (!confirm('Reset to password123?')) return; await fetch('/api/users/' + id + '/reset-password', { method: 'PUT', headers: { 'Authorization': 'Bearer ' + this.token } }); this.log('warning', 'PW reset'); }
+      async delUser(id) { if (!confirm('Delete user?')) return; await fetch('/api/users/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + this.token } }); this.log('warning', 'User deleted'); await this.loadServers(); this.render(); this.switchTab('users'); }
+
+      async changePW() {
+        const pEl = document.getElementById('new-pw');
+        const cEl = document.getElementById('new-pw-confirm');
+        const p = pEl ? pEl.value : '';
+        const c = cEl ? cEl.value : '';
+        if (!p || p !== c || p.length < 6) { alert('Invalid'); return; }
+        await fetch('/api/users/' + this.user.id + '/change-password', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ password: p }) });
+        this.log('success', 'Password changed');
+        if (pEl) pEl.value = '';
+        if (cEl) cEl.value = '';
+      }
+
+      async setup2FA() {
+        const r = await fetch('/api/2fa/setup', { method: 'POST', headers: { 'Authorization': 'Bearer ' + this.token } });
+        const d = await r.json();
+        if (r.ok) {
+          const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(d.otpauthUrl);
+          document.getElementById('2fa-setup-container').innerHTML = '<div style="text-align:center"><p>Scan QR:</p><div class="qr-container"><img src="' + qr + '" /></div><p>Or manual: <div class="secret-code">' + d.secret + '</div></p><input type="text" id="2fa-code" placeholder="000000" maxlength="6" style="text-align:center;font-size:24px" /><button onclick="app.verify2FA()" style="width:100%;margin-top:10px">' + this.t('verify') + '</button></div>';
+          document.getElementById('2fa-modal').classList.add('active');
+        }
+      }
+
+      async verify2FA() {
+        const el = document.getElementById('2fa-code');
+        const t = el ? el.value : '';
+        if (t.length !== 6) return;
+        const r = await fetch('/api/2fa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ token: t }) });
+        if (r.ok) { this.twoFA = true; this.close2FAModal(); this.log('success', '2FA enabled'); this.render(); this.switchTab('settings'); }
+      }
+
+      async disable2FA() {
+        const p = prompt('Password:');
+        if (!p) return;
+        const r = await fetch('/api/2fa/disable', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ password: p }) });
+        if (r.ok) { this.twoFA = false; this.log('warning', '2FA disabled'); this.render(); this.switchTab('settings'); }
+      }
+
+      close2FAModal() { document.getElementById('2fa-modal').classList.remove('active'); }
+
+      openSSH(id) {
+        const s = this.sshServers.find(x => x.id === id);
+        if (!s) return;
+        this.log('info', 'SSH: ' + s.name);
+        this.currentSSH = s;
+        document.getElementById('ssh-modal-title').textContent = 'SSH - ' + s.name;
+        document.getElementById('ssh-modal').classList.add('active');
+        document.getElementById('ssh-auth-container').style.display = 'block';
+        document.getElementById('ssh-terminal-container').innerHTML = '';
+        document.getElementById('ssh-username').value = '';
+        document.getElementById('ssh-password').value = '';
+        const el = document.getElementById('ssh-username');
+        if (el) el.focus();
+      }
+
+      async connectSSH() {
+        const u = document.getElementById('ssh-username').value;
+        const p = document.getElementById('ssh-password').value;
+        if (!u || !p) return;
+        document.getElementById('ssh-auth-container').style.display = 'none';
+        await waitXterm();
+        this.sshTerminal = new Terminal({ cursorBlink: true, fontSize: 14, theme: { background: '#000', foreground: '#0f0', cursor: '#0f0' } });
+        this.fitAddon = new FitAddon.FitAddon();
+        this.sshTerminal.loadAddon(this.fitAddon);
+        const c = document.getElementById('ssh-terminal-container');
+        c.innerHTML = '';
+        this.sshTerminal.open(c);
+        setTimeout(() => this.fitAddon.fit(), 100);
+        this.sshTerminal.writeln('> Connecting...');
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        this.sshSocket = new WebSocket(proto + '//' + location.host + '/ssh/' + this.currentSSH.id);
+        this.sshSocket.onopen = () => { this.sshSocket.send(JSON.stringify({ type: 'auth', username: u, password: p })); };
+        this.sshSocket.onmessage = e => {
+          try {
+            const m = JSON.parse(e.data);
+            if (m.type === 'output') this.sshTerminal.write(m.data);
+            else if (m.type === 'status') { this.sshTerminal.writeln('\r\n> ' + m.data + '\r\n'); this.log(m.data === 'connected' ? 'success' : 'warning', 'SSH: ' + m.data); }
+            else if (m.type === 'error') { this.sshTerminal.writeln('\r\n> Error: ' + m.data + '\r\n'); this.log('error', 'SSH Error: ' + m.data); }
+          } catch (e) {}
+        };
+        this.sshSocket.onerror = () => this.sshTerminal.writeln('\r\n> Error\r\n');
+        this.sshSocket.onclose = () => this.sshTerminal.writeln('\r\n> Closed\r\n');
+        this.sshTerminal.onData(d => { if (this.sshSocket && this.sshSocket.readyState === WebSocket.OPEN) this.sshSocket.send(JSON.stringify({ type: 'input', data: d })); });
+      }
+
+      closeSSHTerminal() {
+        if (this.sshSocket) this.sshSocket.close();
+        if (this.sshTerminal) this.sshTerminal.dispose();
+        this.sshSocket = null;
+        this.sshTerminal = null;
+        document.getElementById('ssh-modal').classList.remove('active');
+        this.log('info', 'SSH closed');
+      }
+
+      setTheme(t) { document.body.className = t; localStorage.setItem('theme', t); this.theme = t; this.log('info', 'Theme: ' + t); }
+      setLang(l) { localStorage.setItem('language', l); this.lang = l; this.token ? this.render() : this.showLogin(); }
+      logout() { this.log('warning', 'Logout'); localStorage.removeItem('token'); localStorage.removeItem('user'); this.token = null; this.user = {}; this.showLogin(); }
+    }
+
+    const app = new App();
+  </script>
+</body>
+</html>

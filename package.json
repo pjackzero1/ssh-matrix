@@ -1,0 +1,37 @@
+{
+  "name": "ssh-matrix",
+  "version": "1.0.0",
+  "description": "SSH Matrix Server Monitoring & Terminal - A web-based SSH server management and monitoring tool",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "ssh",
+    "monitoring",
+    "terminal",
+    "docker",
+    "server-management"
+  ],
+  "author": "pjackzero1",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "express-ws": "^5.0.2",
+    "jsonwebtoken": "^9.0.2",
+    "sqlite3": "^5.1.7",
+    "ssh2": "^1.16.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pjackzero1/ssh-matrix.git"
+  }
+}

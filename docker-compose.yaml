@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  ssh-matrix:
+    build: .
+    container_name: ssh-matrix
+    ports:
+      - "3000:3000"
+    volumes:
+      - ssh-matrix-data:/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_DIR=/data
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production-min-32-chars}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks:
+      - ssh-matrix-network
+
+volumes:
+  ssh-matrix-data:
+    driver: local
+
+networks:
+  ssh-matrix-network:
+    driver: bridge

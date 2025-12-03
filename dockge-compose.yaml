@@ -1,0 +1,34 @@
+# Dockge-optimierte Docker Compose Konfiguration
+# Diese Datei kann direkt in Dockge importiert werden
+
+version: "3.8"
+
+services:
+  ssh-matrix:
+    image: ghcr.io/pjackzero1/ssh-matrix:latest
+    # Alternativ lokaler Build:
+    # build: https://github.com/pjackzero1/ssh-matrix.git
+    container_name: ssh-matrix
+    ports:
+      - "3000:3000"
+    volumes:
+      - ssh-matrix-data:/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_DIR=/data
+      # WICHTIG: JWT_SECRET in Produktion ändern!
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production-min-32-chars}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+volumes:
+  ssh-matrix-data:
+    driver: local
