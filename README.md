@@ -65,11 +65,9 @@ open http://localhost:3000
 ### Docker Compose Configuration
 
 ```yaml
-version: "3.8"
-
 services:
   ssh-matrix:
-    build: .
+    image: ghcr.io/pjackzero1/ssh-matrix:latest
     container_name: ssh-matrix
     ports:
       - "3000:3000"
@@ -79,7 +77,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - DB_DIR=/data
-      - JWT_SECRET=your-secure-secret-here
+      - JWT_SECRET=mein-geheimer-schluessel-aendern
     restart: unless-stopped
 
 volumes:
