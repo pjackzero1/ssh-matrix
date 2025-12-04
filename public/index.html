@@ -639,6 +639,24 @@
         this.init();
       }
 
+      // Hilfsfunktion: URL korrigieren (https:// hinzufügen wenn fehlt)
+      fixUrl(url) {
+        if (!url) return '';
+        url = url.trim();
+        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+          return 'https://' + url;
+        }
+        return url;
+      }
+
+      // Externe URL öffnen
+      openExternal(url) {
+        const fixedUrl = this.fixUrl(url);
+        if (fixedUrl) {
+          window.open(fixedUrl, '_blank');
+        }
+      }
+
       t(k) { return T[this.lang][k] || k; }
 
       init() {
@@ -871,19 +889,19 @@
         const sshList = this.sshServers.map(s => 
           '<div class="server-item"><div class="server-info"><div class="server-name">' + s.name + '</div><div class="server-host">' + s.host + ':' + s.port + (s.description ? ' | ' + s.description : '') + (s.external_url ? ' | EXT: ' + s.external_url : '') + '</div></div>' +
           '<div class="status ' + s.status + '">' + s.status.toUpperCase() + '</div>' +
-          '<div class="actions"><button onclick="app.openSSH(' + s.id + ')">SSH</button>' + (s.external_url ? '<button onclick="window.open(\'' + s.external_url + '\',\'_blank\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'ssh\',' + s.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'ssh\',' + s.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'ssh\',' + s.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
+          '<div class="actions"><button onclick="app.openSSH(' + s.id + ')">SSH</button>' + (s.external_url ? '<button onclick="app.openExternal(\'' + s.external_url.replace(/'/g, "\\'") + '\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'ssh\',' + s.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'ssh\',' + s.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'ssh\',' + s.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
         ).join('');
 
         const htmlList = this.htmlServers.map(s =>
           '<div class="server-item"><div class="server-info"><div class="server-name">' + s.name + '</div><div class="server-host">' + s.protocol + '://' + s.host + ':' + s.port + (s.description ? ' | ' + s.description : '') + (s.external_url ? ' | EXT: ' + s.external_url : '') + '</div></div>' +
           '<div class="status ' + s.status + '">' + s.status.toUpperCase() + '</div>' +
-          '<div class="actions"><button onclick="window.open(\'' + s.protocol + '://' + s.host + ':' + s.port + '\',\'_blank\')">' + this.t('openInt') + '</button>' + (s.external_url ? '<button onclick="window.open(\'' + s.external_url + '\',\'_blank\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'html\',' + s.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'html\',' + s.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'html\',' + s.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
+          '<div class="actions"><button onclick="window.open(\'' + s.protocol + '://' + s.host + ':' + s.port + '\',\'_blank\')">' + this.t('openInt') + '</button>' + (s.external_url ? '<button onclick="app.openExternal(\'' + s.external_url.replace(/'/g, "\\'") + '\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'html\',' + s.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'html\',' + s.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'html\',' + s.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
         ).join('');
 
         const fbList = this.fritzboxes.map(f =>
           '<div class="server-item"><div class="server-info"><div class="server-name">' + f.name + '</div><div class="server-host">' + f.ip + (f.external_url ? ' | EXT: ' + f.external_url : '') + '</div></div>' +
           '<div class="status ' + f.status + '">' + f.status.toUpperCase() + '</div>' +
-          '<div class="actions"><button onclick="window.open(\'http://' + f.ip + '\',\'_blank\')">' + this.t('openInt') + '</button>' + (f.external_url ? '<button onclick="window.open(\'' + f.external_url + '\',\'_blank\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'fritzbox\',' + f.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'fb\',' + f.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'fritzbox\',' + f.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
+          '<div class="actions"><button onclick="window.open(\'http://' + f.ip + '\',\'_blank\')">' + this.t('openInt') + '</button>' + (f.external_url ? '<button onclick="app.openExternal(\'' + f.external_url.replace(/'/g, "\\'") + '\')">' + this.t('openExt') + '</button>' : '') + '<button onclick="app.check(\'fritzbox\',' + f.id + ')">' + this.t('check') + '</button>' + (this.user.role === 'admin' ? '<button onclick="app.edit(\'fb\',' + f.id + ')">' + this.t('edit') + '</button><button onclick="app.del(\'fritzbox\',' + f.id + ')">' + this.t('delete') + '</button>' : '') + '</div></div>'
         ).join('');
 
         const groupList = this.groups.map(g =>
